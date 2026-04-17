@@ -563,8 +563,8 @@ def page_dashboard():
             aspect="auto",
             text_auto=".1f" if metric_h == "平均勝率" else ".0f"
         )
+        fig_hm.update_layout(**PLOTLY_THEME)
         fig_hm.update_layout(
-            **PLOTLY_THEME,
             xaxis=dict(title="台番号末尾 / ゾロ目", dtick=1),
             yaxis=dict(title="日付末尾 (1の位)", dtick=1),
             margin=dict(l=40, r=40, t=40, b=40)
