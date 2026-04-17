@@ -92,6 +92,17 @@ def load_all_data() -> pd.DataFrame:
         "SELECT * FROM terminal_data ORDER BY date, terminal_number", con
     )
     con.close()
+    
+    if not df.empty:
+        # 日付変換
+        df["date_dt"] = pd.to_datetime(df["date"])
+        # 日付の1の位
+        df["date_last_digit"] = df["date_dt"].dt.day % 10
+        # 曜日
+        df["day_of_week"] = df["date_dt"].apply(get_day_of_week_jp)
+        # 勝率の数値化
+        df["win_rate_num"] = df["win_rate"].apply(_win_rate_to_float)
+        
     return df
 
 # ─────────────────────────────────────────
@@ -112,6 +123,11 @@ def _win_rate_to_float(val: str) -> Optional[float]:
         return float(str(val).replace("%", "").strip())
     except Exception:
         return None
+
+def get_day_of_week_jp(dt):
+    """datetime オブジェクトを日本語の曜日名に変換"""
+    days = ["月", "火", "水", "木", "金", "土", "日"]
+    return days[dt.weekday()]
 
 def get_gemini_client():
     api_key = None
@@ -265,6 +281,46 @@ def apply_custom_css():
             overflow: hidden;
             border: 1px solid rgba(255,255,255,0.05);
         }
+        /* 予測ランキングカード */
+        .prediction-card {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.15);
+            transition: all 0.3s ease;
+        }
+        .prediction-card:hover {
+            border-color: #8b5cf6;
+            box-shadow: 0 0 30px rgba(139, 92, 246, 0.3);
+            transform: scale(1.02);
+        }
+        .rank-s { border: 2px solid #ff00ff; box-shadow: 0 0 20px #ff00ff44; }
+        .rank-a { border: 2px solid #00ffff; box-shadow: 0 0 20px #00ffff44; }
+        .rank-b { border: 2px solid #00ff00; box-shadow: 0 0 20px #00ff0044; }
+
+        .rank-badge {
+            font-size: 2rem;
+            font-weight: 900;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+        .rank-s .rank-badge { color: #ff00ff; text-shadow: 0 0 10px #ff00ff; }
+        .rank-a .rank-badge { color: #00ffff; text-shadow: 0 0 10px #00ffff; }
+        .rank-b .rank-badge { color: #00ff00; text-shadow: 0 0 10px #00ff00; }
+        
+        .prediction-label {
+            font-size: 0.8rem;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .prediction-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -400,9 +456,127 @@ def page_dashboard():
     k3.metric("🏆 平均勝率 最高末尾", f"末尾 {best_terminal}")
     k4.metric("💴 累計差枚合計", f"{total_diff_sum:,.0f} 枚")
 
+    # ─── 🔮 明日の狙い目予測 ───────────────────
+    st.markdown("### 🔮 狙い目予測")
+    
+    # 予測対象日の選択
+    col_target, _ = st.columns([1, 2])
+    with col_target:
+        target_date = st.date_input("予測対象日を選んでください", value=date.today() + pd.Timedelta(days=1))
+    
+    t_last_digit = target_date.day % 10
+    t_dow = get_day_of_week_jp(target_date)
+    
+    st.info(f"📅 **解析条件:** 日付末尾: `{t_last_digit}` | 曜日: `{t_dow}` (重み: 日付末尾={st.session_state.weights['date']} / 曜日={st.session_state.weights['dow']} / トレンド={st.session_state.weights['trend']})")
+    
+    # スコア計算
+    terminal_list = sorted(df["terminal_number"].unique())
+    scores = []
+    
+    for t_num in terminal_list:
+        sub = df[df["terminal_number"] == t_num]
+        
+        # A: 同日付末尾の平均勝率
+        score_a = sub[sub["date_last_digit"] == t_last_digit]["win_rate_num"].mean()
+        if pd.isna(score_a): score_a = 0
+            
+        # B: 同曜日の平均勝率
+        score_b = sub[sub["day_of_week"] == t_dow]["win_rate_num"].mean()
+        if pd.isna(score_b): score_b = 0
+            
+        # C: 直近3回のトレンド (平均差枚をスケーリング: 1000枚で10点相当)
+        last_3 = sub.sort_values("date_dt", ascending=False).head(3)
+        score_c = last_3["avg_diff"].mean() / 100 if not last_3.empty else 0
+        if pd.isna(score_c): score_c = 0
+        
+        # 荷重平均
+        total_score = (
+            score_a * st.session_state.weights["date"] +
+            score_b * st.session_state.weights["dow"] +
+            score_c * st.session_state.weights["trend"]
+        )
+        
+        scores.append({
+            "terminal": t_num,
+            "score": total_score,
+            "details": {"a": score_a, "b": score_b, "c": score_c}
+        })
+        
+    # ランキング
+    ranking = sorted(scores, key=lambda x: x["score"], reverse=True)
+    
+    c1, c2, c3 = st.columns(3)
+    ranks = [("S", "rank-s", c1), ("A", "rank-a", c2), ("B", "rank-b", c3)]
+    
+    for i, (label, css_class, col) in enumerate(ranks):
+        if i < len(ranking):
+            item = ranking[i]
+            with col:
+                st.markdown(f"""
+                <div class="prediction-card {css_class}">
+                    <span class="rank-badge">{label}</span>
+                    <div class="prediction-label">推奨末尾</div>
+                    <div class="prediction-value">{item['terminal']}</div>
+                    <div style="font-size:0.7rem; color:rgba(255,255,255,0.4); margin-top:8px;">
+                        スコア: {item['score']:.1f}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
     st.markdown("---")
 
-    tab1, tab2, tab3 = st.tabs(["🎰 末尾別比較", "📈 時系列推移", "🗃️ 生データ"])
+    tab_h, tab1, tab2, tab3 = st.tabs(["🗺️ ターゲット分析", "🎰 末尾別比較", "📈 時系列推移", "🗃️ 生データ"])
+
+    # ─── Tab_H: ターゲット・デイ分析 (ヒートマップ) ────────
+    with tab_h:
+        st.markdown("#### 「日付末尾 × 台番号末尾」の相関ヒートマップ")
+        
+        metric_h = st.radio(
+            "表示指標",
+            ["平均勝率", "平均差枚"],
+            horizontal=True,
+            key="hm_metric"
+        )
+        val_col = "win_rate_num" if metric_h == "平均勝率" else "avg_diff"
+        
+        # ピボットテーブル作成
+        # Y軸: 日付末尾 (0-9), X軸: 台番号末尾 (0-9/ゾロ目)
+        pivot_df = df.pivot_table(
+            index="date_last_digit",
+            columns="terminal_number",
+            values=val_col,
+            aggfunc="mean"
+        ).reindex(index=range(10))
+        
+        # 表示用に並べ替え (0-9, ゾロ目の順)
+        cols = [str(i) for i in range(10)]
+        if "ゾロ目" in pivot_df.columns:
+            cols.append("ゾロ目")
+        pivot_df = pivot_df.reindex(columns=cols)
+        
+        fig_hm = px.imshow(
+            pivot_df,
+            labels=dict(x="台末尾", y="日付末尾", color=metric_h),
+            x=pivot_df.columns,
+            y=pivot_df.index,
+            color_continuous_scale="Viridis" if metric_h == "平均勝率" else "RdYlGn",
+            aspect="auto",
+            text_auto=".1f" if metric_h == "平均勝率" else ".0f"
+        )
+        fig_hm.update_layout(
+            **PLOTLY_THEME,
+            xaxis=dict(title="台番号末尾 / ゾロ目", dtick=1),
+            yaxis=dict(title="日付末尾 (1の位)", dtick=1),
+            margin=dict(l=40, r=40, t=40, b=40)
+        )
+        st.plotly_chart(fig_hm, use_container_width=True)
+        
+        st.markdown("""
+        <div style="font-size:0.85rem; color:#9ca3af; padding: 10px; border-left: 3px solid #8b5cf6; background: rgba(139, 92, 246, 0.05);">
+        💡 <b>見方:</b> 特定の日付末尾（縦軸）において。どの末尾（横軸）が強いかという「店のクセ」を可視化しています。<br>
+        色が明るい/緑に近いほどパフォーマンスが良いことを示します。
+        </div>
+        """, unsafe_allow_html=True)
 
     # ─── Tab1: 末尾別比較 ────────────────────
     with tab1:
@@ -584,6 +758,19 @@ def main():
             ["📥 データ入力", "📊 ダッシュボード"],
             label_visibility="collapsed",
         )
+
+        st.markdown("---")
+        st.markdown("### ⚙️ 予測重み付け設定")
+        w_date = st.slider("📅 日付末尾の重み", 0.0, 1.0, 0.4, 0.1, help="翌日と同じ日付末尾の過去の実績を重視")
+        w_dow = st.slider("🗓️ 曜日の重み", 0.0, 1.0, 0.3, 0.1, help="翌日と同じ曜日の過去の実績を重視")
+        w_trend = st.slider("📈 トレンドの重み", 0.0, 1.0, 0.3, 0.1, help="直近の勢いを重視")
+        
+        # セッション状態に保存
+        st.session_state.weights = {
+            "date": w_date,
+            "dow": w_dow,
+            "trend": w_trend
+        }
 
         st.markdown("---")
         db_df = load_all_data()
