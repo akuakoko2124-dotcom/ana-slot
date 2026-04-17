@@ -29,16 +29,9 @@ TERMINAL_OPTIONS = [str(i) for i in range(10)] + ["ゾロ目"]
 
 GEMINI_PROMPT = (
     "この画像はパチスロの末尾別データです。"
-    "表から『末尾』『末尾別差枚数』『平均差枚』『平均G数』『勝率』を抽出し、"
-    "純粋なJSON形式で出力してください。"
-    "数値のカンマや『+』記号は除去し、純粋な数値型としてください。"
+    "表から『末尾』『末尾別差枚数』『平均差枚』『平均G数』『勝率』を抽出してください。"
+    "数値のカンマや『+』記号は除去し、純粋な数値型として出力してください。"
     "勝率は文字列のままで構いません。"
-    "出力形式の例:\n"
-    '[\n'
-    '  {"末尾": "0", "末尾別差枚数": 12345, "平均差枚": 234, "平均G数": 5678, "勝率": "52.3%"},\n'
-    '  ...\n'
-    ']\n'
-    "JSON以外のテキストは一切出力しないでください。"
 )
 
 # ─────────────────────────────────────────
@@ -276,13 +269,21 @@ def page_input():
             if not uploaded:
                 st.warning("画像をアップロードしてください。")
             else:
-                with st.spinner("AIで解析中..."):
+                with st.spinner("🚀 超高速AIで解析中..."):
                     try:
                         client = get_gemini_client()
+                        
+                        # 【高速化1】画像を送信前に縮小する (最大1200px)
                         img = Image.open(uploaded)
+                        img.thumbnail((1200, 1200))
+
+                        # 【高速化2 & 3】最軽量モデル ＋ JSON強制モード
                         response = client.models.generate_content(
-                            model="gemini-flash-latest",
+                            model="gemini-flash-lite-latest",
                             contents=[GEMINI_PROMPT, img],
+                            config=genai_types.GenerateContentConfig(
+                                response_mime_type="application/json",
+                            )
                         )
                         raw_text = response.text
                         rows = parse_gemini_response(raw_text)
