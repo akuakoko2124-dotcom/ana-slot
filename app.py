@@ -152,80 +152,118 @@ def apply_custom_css():
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Noto+Sans+JP:wght@300;400;700&display=swap');
 
         html, body, [class*="css"] {
-            font-family: 'Noto Sans JP', 'Inter', sans-serif;
+            font-family: 'Inter', 'Noto Sans JP', sans-serif !important;
         }
 
-        /* ダークグラデーション背景 */
+        /* 超リッチなダーク・メッシュグラデーション背景 */
         .stApp {
-            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            background-color: #0b0f19;
+            background-image: 
+                radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+                radial-gradient(at 50% 0%, hsla(225,39%,30%,0.2) 0, transparent 50%), 
+                radial-gradient(at 100% 0%, hsla(339,49%,30%,0.2) 0, transparent 50%);
+            background-attachment: fixed;
             min-height: 100vh;
         }
 
-        /* サイドバー */
+        /* サイドバー (グラスモーフィズム) */
         section[data-testid="stSidebar"] {
-            background: rgba(255,255,255,0.04) !important;
-            border-right: 1px solid rgba(255,255,255,0.08);
-            backdrop-filter: blur(12px);
+            background: rgba(17, 24, 39, 0.4) !important;
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
         }
 
-        /* カード風コンテナ */
-        .card {
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 16px;
-            padding: 1.5rem 2rem;
-            margin-bottom: 1.2rem;
-            backdrop-filter: blur(10px);
-        }
-
-        /* メトリクスカード */
-        div[data-testid="metric-container"] {
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 12px;
-            padding: 0.8rem 1rem;
-        }
-
-        /* ボタン */
-        .stButton > button {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            padding: 0.5rem 1.5rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-        .stButton > button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 24px rgba(102,126,234,0.5);
-        }
-
-        /* DataFrameテーブル */
-        .dataframe { border-radius: 10px; overflow: hidden; }
-
-        /* ヘッダー装飾 */
+        /* グラデーションテキストの装飾 */
         .page-title {
-            font-size: 2rem;
-            font-weight: 700;
-            background: linear-gradient(90deg, #a78bfa, #60a5fa);
+            font-size: 2.2rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #a855f7 0%, #3b82f6 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 0.3rem;
+            margin-bottom: 0.2rem;
+            letter-spacing: -0.5px;
         }
         .page-subtitle {
-            color: rgba(255,255,255,0.5);
-            font-size: 0.9rem;
-            margin-bottom: 1.5rem;
+            color: #9ca3af;
+            font-size: 0.95rem;
+            font-weight: 400;
+            margin-bottom: 1.8rem;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding-bottom: 1rem;
         }
 
-        /* タブ */
+        /* アップロードや入力のカード (超グラスモーフィズム) */
+        .card {
+            background: linear-gradient(145deg, rgba(30, 41, 59, 0.7), rgba(15, 23, 42, 0.8));
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease;
+        }
+
+        /* KPI メトリクスカード (ネオンシャドウ) */
+        div[data-testid="metric-container"] {
+            background: linear-gradient(180deg, rgba(30, 41, 59, 0.5) 0%, rgba(15, 23, 42, 0.5) 100%);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            border-radius: 16px;
+            padding: 1.2rem;
+            box-shadow: 0 4px 20px rgba(139, 92, 246, 0.1);
+            backdrop-filter: blur(12px);
+            transition: all 0.3s ease;
+        }
+        div[data-testid="metric-container"]:hover {
+            border-color: rgba(139, 92, 246, 0.5);
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.25);
+            transform: translateY(-2px);
+        }
+
+        /* ボタンデザイン (サイバーパンク風) */
+        .stButton > button {
+            background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 0.6rem 2rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        }
+        .stButton > button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.6);
+            background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 100%);
+            color: #ffffff;
+        }
+
+        /* タブのスタイリング */
         .stTabs [data-baseweb="tab-list"] {
-            gap: 8px;
+            gap: 10px;
+            background-color: transparent;
         }
         .stTabs [data-baseweb="tab"] {
-            border-radius: 8px 8px 0 0;
-            padding: 8px 20px;
+            border-radius: 10px 10px 0 0;
+            padding: 10px 24px;
+            background: rgba(30, 41, 59, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: none;
+            color: #9ca3af;
+        }
+        .stTabs [aria-selected="true"] {
+            background: linear-gradient(180deg, rgba(139, 92, 246, 0.15) 0%, rgba(30, 41, 59, 0) 100%);
+            color: #f3f4f6;
+            border-top: 2px solid #8b5cf6;
+        }
+
+        /* テーブル (DataFrame) */
+        .dataframe {
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.05);
         }
         </style>
         """,
