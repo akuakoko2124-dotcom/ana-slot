@@ -848,6 +848,7 @@ def main():
         }
 
         st.markdown("---")
+        db_df = load_all_data()
         st.markdown(
             f"""
             <div style="font-size:0.8rem; color:rgba(255,255,255,0.5);">
