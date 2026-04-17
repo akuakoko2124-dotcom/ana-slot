@@ -1,0 +1,11 @@
+.venv
+__pycache__/
+*.pyc
+.DS_Store
+.env
+
+# Streamlit のシークレットキーは絶対にGitHubに上げない！
+.streamlit/secrets.toml
+
+# ローカルのDBファイルも一旦除外（環境ごとに作成するため）
+slot_data.db
