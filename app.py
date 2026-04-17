@@ -100,6 +100,8 @@ def load_all_data() -> pd.DataFrame:
         df["date_last_digit"] = df["date_dt"].dt.day % 10
         # 曜日
         df["day_of_week"] = df["date_dt"].apply(get_day_of_week_jp)
+        # 月 (YYYY-MM)
+        df["month"] = df["date_dt"].dt.strftime("%Y-%m")
         # 勝率の数値化
         df["win_rate_num"] = df["win_rate"].apply(_win_rate_to_float)
         
@@ -437,24 +439,64 @@ def page_dashboard():
         st.info("データがまだありません。まず「データ入力」ページで画像を解析・保存してください。")
         return
 
-    # 勝率を数値化
-    df["win_rate_num"] = df["win_rate"].apply(_win_rate_to_float)
+    # ─── 表示フィルター ──────────────────────
+    view_unit = st.session_state.get("view_unit_selector", "日別")
+    
+    if view_unit == "月別":
+        month_options = sorted(df["month"].unique(), reverse=True)
+        selected_month = st.sidebar.selectbox("📅 対象月を選択", month_options, key="dash_month_sel")
+        display_df = df[df["month"] == selected_month].copy()
+        
+        # 前月比 (MoM) の計算
+        prev_month_dt = pd.to_datetime(selected_month) - pd.DateOffset(months=1)
+        prev_month_str = prev_month_dt.strftime("%Y-%m")
+        prev_df = df[df["month"] == prev_month_str]
+        
+        title_suffix = f" {selected_month} (月間)"
+    else:
+        # 日別
+        date_options = sorted(df["date"].unique(), reverse=True)
+        latest_date = date_options[0] if date_options else date.today()
+        selected_date = st.sidebar.date_input("📅 表示対象日", value=pd.to_datetime(latest_date), key="dash_date_sel")
+        selected_date_str = str(selected_date)
+        display_df = df[df["date"] == selected_date_str].copy()
+        
+        # 前日比 (DoD) または直近比
+        prev_df = df[df["date"] < selected_date_str].sort_values("date", ascending=False)
+        if not prev_df.empty:
+            last_date = prev_df["date"].max()
+            prev_df = prev_df[prev_df["date"] == last_date]
+        
+        title_suffix = f" {selected_date_str} (日別)"
+
+    st.markdown(f'<div class="page-title">📊 ダッシュボード <span style="font-size:1.2rem; opacity:0.7;">{title_suffix}</span></div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="page-subtitle">{view_unit}の集計データから末尾トレンドを分析します</div>',
+        unsafe_allow_html=True,
+    )
 
     # ─── KPI サマリー ───────────────────────
-    total_records = len(df)
-    days_count = df["date"].nunique()
-    best_terminal = (
-        df.groupby("terminal_number")["win_rate_num"].mean().idxmax()
-        if not df["win_rate_num"].isna().all()
-        else "N/A"
-    )
-    total_diff_sum = df["total_diff"].sum()
+    def calc_kpis(target_df):
+        if target_df.empty:
+            return 0, 0, "N/A", 0
+        avg_wr = target_df["win_rate_num"].mean()
+        tot_recs = len(target_df)
+        best_t = target_df.groupby("terminal_number")["win_rate_num"].mean().idxmax() if not target_df["win_rate_num"].isna().all() else "N/A"
+        tot_diff_sum = target_df["total_diff"].sum()
+        return avg_wr, tot_recs, best_t, tot_diff_sum
+
+    cur_wr, cur_recs, cur_best, cur_diff = calc_kpis(display_df)
+    pre_wr, pre_recs, pre_best, pre_diff = calc_kpis(prev_df)
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("📅 データ日数", f"{days_count} 日")
-    k2.metric("📝 総レコード数", f"{total_records} 件")
-    k3.metric("🏆 平均勝率 最高末尾", f"末尾 {best_terminal}")
-    k4.metric("💴 累計差枚合計", f"{total_diff_sum:,.0f} 枚")
+    
+    wr_delta = f"{cur_wr - pre_wr:+.1f}%" if pre_wr > 0 else None
+    diff_delta = f"{cur_diff - pre_diff:+,.0f}" if pre_diff != 0 else None
+    
+    k1.metric("📈 平均勝率", f"{cur_wr:.1f} %", delta=wr_delta)
+    k2.metric("📝 レコード数", f"{cur_recs} 件", delta=f"{cur_recs - pre_recs:+d}" if pre_recs > 0 else None)
+    k3.metric("🏆 最高評価末尾", f"末尾 {cur_best}")
+    k4.metric("💴 累計差枚", f"{cur_diff:,.0f} 枚", delta=diff_delta)
 
     # ─── 🔮 明日の狙い目予測 ───────────────────
     st.markdown("### 🔮 狙い目予測")
@@ -529,7 +571,7 @@ def page_dashboard():
 
     # ─── Tab_H: ターゲット・デイ分析 (ヒートマップ) ────────
     with tab_h:
-        st.markdown("#### 「日付末尾 × 台番号末尾」の相関ヒートマップ")
+        st.markdown(f"#### 「日付末尾 × 台番号末尾」の相関ヒートマップ ({title_suffix})")
         
         metric_h = st.radio(
             "表示指標",
@@ -539,9 +581,8 @@ def page_dashboard():
         )
         val_col = "win_rate_num" if metric_h == "平均勝率" else "avg_diff"
         
-        # ピボットテーブル作成
-        # Y軸: 日付末尾 (0-9), X軸: 台番号末尾 (0-9/ゾロ目)
-        pivot_df = df.pivot_table(
+        # ピボットテーブル作成 (表示中の display_df を使用)
+        pivot_df = display_df.pivot_table(
             index="date_last_digit",
             columns="terminal_number",
             values=val_col,
@@ -581,7 +622,7 @@ def page_dashboard():
     # ─── Tab1: 末尾別比較 ────────────────────
     with tab1:
         agg = (
-            df.groupby("terminal_number")
+            display_df.groupby("terminal_number")
             .agg(
                 平均勝率=("win_rate_num", "mean"),
                 累計差枚=("total_diff", "sum"),
@@ -657,13 +698,39 @@ def page_dashboard():
 
         st.dataframe(agg, use_container_width=True)
 
-    # ─── Tab2: 時系列推移 ───────────────────
+    # ─── Tab2: 時系列・月別推移 ───────────────────
     with tab2:
+        if view_unit == "月別":
+            st.markdown("#### 📅 月別トレンド推移")
+            monthly_agg = (
+                df.groupby("month")
+                .agg(
+                    平均勝率=("win_rate_num", "mean"),
+                    累計差枚=("total_diff", "sum"),
+                )
+                .reset_index()
+                .sort_values("month")
+            )
+            
+            c_l, c_r = st.columns(2)
+            with c_l:
+                fig_m_wr = px.bar(monthly_agg, x="month", y="平均勝率", title="月別 平均勝率 (%)", color="平均勝率", color_continuous_scale="plasma")
+                fig_m_wr.update_layout(**PLOTLY_THEME, showlegend=False)
+                st.plotly_chart(fig_m_wr, use_container_width=True)
+            with c_r:
+                fig_m_diff = px.bar(monthly_agg, x="month", y="累計差枚", title="月別 累計差枚数", color="累計差枚", color_continuous_scale="RdYlGn")
+                fig_m_diff.update_layout(**PLOTLY_THEME, showlegend=False)
+                st.plotly_chart(fig_m_diff, use_container_width=True)
+                
+            st.markdown("---")
+
+        st.markdown("#### 📈 末尾別 時系列推移")
         terminals = sorted(df["terminal_number"].unique())
         selected_terminals = st.multiselect(
             "末尾を選択（複数可）",
             options=terminals,
             default=terminals[:3] if len(terminals) >= 3 else terminals,
+            key="ts_terminal_sel"
         )
         metric_choice = st.selectbox(
             "指標を選択",
@@ -674,6 +741,7 @@ def page_dashboard():
                 "total_diff": "末尾別差枚数",
                 "avg_game": "平均G数",
             }[x],
+            key="ts_metric_sel"
         )
 
         df_filtered = df[df["terminal_number"].isin(selected_terminals)].copy()
@@ -760,6 +828,13 @@ def main():
         )
 
         st.markdown("---")
+        st.session_state.view_unit = st.radio(
+            "📊 表示単位",
+            ["日別", "月別"],
+            horizontal=True,
+            key="view_unit_selector"
+        )
+
         st.markdown("### ⚙️ 予測重み付け設定")
         w_date = st.slider("📅 日付末尾の重み", 0.0, 1.0, 0.4, 0.1, help="翌日と同じ日付末尾の過去の実績を重視")
         w_dow = st.slider("🗓️ 曜日の重み", 0.0, 1.0, 0.3, 0.1, help="翌日と同じ曜日の過去の実績を重視")
@@ -773,7 +848,6 @@ def main():
         }
 
         st.markdown("---")
-        db_df = load_all_data()
         st.markdown(
             f"""
             <div style="font-size:0.8rem; color:rgba(255,255,255,0.5);">
